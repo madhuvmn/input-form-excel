@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Data Entry — ID / Date / Quantity / Percentage → Excel</title>
+
+  <style>
+    :root{
+      --accent:#0b74de;
+      --muted:#666;
+      --bg:#f7f9fc;
+      --card:#fff;
+      --danger:#d9534f;
+      --good:#2a9d8f;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;
+      background:var(--bg);
+      color:#111;
+      padding:12px;
+    }
+    .container{ max-width:980px; margin:0 auto; }
+    header{ display:flex; gap:12px; align-items:center; margin-bottom:12px; }
+    header h1{ font-size:18px; margin:0; }
+    .card{ background:var(--card); border-radius:10px; padding:12px; box-shadow:0 6px 18px rgba(10,20,40,0.06); margin-bottom:12px; }
+
+    form{ display:grid; gap:8px; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); align-items:end; }
+    label{ font-size:12px; color:var(--muted); display:block; margin-bottom:4px; }
+    input[type="number"], input[type="date"], input[type="text"]{
+      width:100%; padding:10px; border-radius:8px; border:1px solid #e1e7ef; background:white; font-size:14px;
+    }
+    input[readonly]{ background:#f4f6f9; }
+    .controls{ display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; grid-column:1/-1; }
+    button{ padding:10px 12px; border-radius:8px; border:0; background:var(--accent); color:white; font-weight:600; cursor:pointer; font-size:14px; }
+    button.ghost{ background:transparent; border:1px solid #dfe8f5; color:#111; font-weight:600; }
+    button.warn{ background:var(--danger); }
+    .small{ padding:8px 10px; font-size:13px; }
+
+    .table-wrap{ overflow:auto; }
+    table{ width:100%; border-collapse:collapse; min-width:600px; font-size:14px; }
+    th,td{ text-align:left; padding:10px 12px; border-bottom:1px solid #eef3fa; vertical-align:middle; }
+    th{ background:#f1f6fb; font-weight:700; position:sticky; top:0; z-index:2; font-size:13px; }
+    td.actions{ white-space:nowrap; width:1px; }
+    .muted{ color:var(--muted); font-size:13px; }
+    @media (max-width:520px){
+      form{ grid-template-columns: 1fr 1fr; }
+      header h1{ font-size:16px; }
+      table{ min-width:520px; }
+    }
+    .row-actions button{ margin-left:6px; padding:6px 8px; font-size:12px; }
+    .error{ color:var(--danger); font-size:12px; margin-top:4px; }
+    .success{ color:var(--good); font-size:12px; margin-top:4px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>Entry Form — ID / Date / Qty / % → Excel</h1>
+        <div class="muted" style="font-size:13px">Validations: ID 1–21, Qty &gt; 0, % between 5.0–10.0. Amount auto-calculated.</div>
+      </div>
+    </header>
+
+    <section class="card" aria-labelledby="form-title">
+      <div id="form-title" class="muted" style="margin-bottom:8px">Add a new row</div>
+
+      <form id="entry-form" onsubmit="return false;">
+        <div>
+          <label for="input-id">ID (1 - 21)</label>
+          <input id="input-id" type="number" inputmode="numeric" min="1" max="21" step="1" placeholder="e.g. 0" required />
+          <div id="err-id" class="error" style="display:none"></div>
+        </div>
+
+        <div>
+          <label for="input-date">Date</label>
+          <input id="input-date" type="date" required />
+          <div id="err-date" class="error" style="display:none"></div>
+        </div>
+
+        <div>
+          <label for="input-qty">Quantity (&gt; 0.0)</label>
+          <input id="input-qty" type="number" inputmode="decimal" min="0.0000001" step="any" placeholder="e.g. 12.5" required />
+          <div id="err-qty" class="error" style="display:none"></div>
+        </div>
+
+        <div>
+          <label for="input-pct">Percentage (5.0 - 10.0)</label>
+          <input id="input-pct" type="number" inputmode="decimal" min="5" max="10" step="any" placeholder="e.g. 7.5" required />
+          <div id="err-pct" class="error" style="display:none"></div>
+        </div>
+
+        <div style="grid-column:1/-1">
+          <label for="input-amt">Amount (auto)</label>
+          <input id="input-amt" type="text" readonly placeholder="Calculated automatically" />
+          <div class="muted" style="font-size:12px; margin-top:4px">Formula: <code>amount = quantity × percentage × 7.5</code></div>
+        </div>
+
+        <div class="controls">
+          <button id="add-row" type="button">➕ Add row</button>
+          <button id="clear-form" class="ghost small" type="button">Clear form</button>
+
+          <div style="margin-left:auto" class="flex">
+            <button id="download-xlsx" class="small" type="button">⬇️ Download Excel (.xlsx)</button>
+            <button id="clear-all" class="small warn" type="button">Delete all</button>
+          </div>
+        </div>
+      </form>
+    </section>
+
+    <section class="card">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+        <div class="muted">Table preview</div>
+        <div id="rows-count" class="muted" style="margin-left:auto"></div>
+      </div>
+
+      <div class="table-wrap">
+        <table id="data-table" role="table" aria-label="Data table">
+          <thead id="table-head"></thead>
+          <tbody id="table-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer style="text-align:center; color:var(--muted); font-size:13px; margin-top:8px">
+      Tip: Data saved in your browser. Use Delete all to reset.
+    </footer>
+  </div>
+
+  <!-- SheetJS (xlsx) -->
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+
+  <script>
+    // --- State ---
+    const STORAGE_KEY = 'simple_table_v2';
+    let rows = [];
+    // DOM
+    const inputId = document.getElementById('input-id');
+    const inputDate = document.getElementById('input-date');
+    const inputQty = document.getElementById('input-qty');
+    const inputPct = document.getElementById('input-pct');
+    const inputAmt = document.getElementById('input-amt');
+
+    const errId = document.getElementById('err-id');
+    const errDate = document.getElementById('err-date');
+    const errQty = document.getElementById('err-qty');
+    const errPct = document.getElementById('err-pct');
+
+    const tableHead = document.getElementById('table-head');
+    const tableBody = document.getElementById('table-body');
+    const rowsCount = document.getElementById('rows-count');
+
+    // init
+    function init(){
+      loadStorage();
+      renderTable();
+      attachHandlers();
+      recalcAmount(); // in case inputs prefilled
+    }
+
+    function saveStorage(){
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(rows)); } catch(e){ console.warn('save failed', e); }
+    }
+    function loadStorage(){
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) rows = JSON.parse(raw);
+      } catch(e){ console.warn('load failed', e); }
+    }
+
+    // --- Validations ---
+    function validateId(value){
+      if (value === '' || value === null || isNaN(value)) return 'ID is required and must be a number.';
+      const n = Number(value);
+      if (!Number.isInteger(n)) return 'ID must be an integer.';
+      if (n < 0 || n > 21) return 'ID must be between 0 and 21.';
+      return '';
+    }
+
+    function validateDate(value){
+      if (!value) return 'Date is required.';
+      // optional: further checks
+      return '';
+    }
+
+    function validateQty(value){
+      if (value === '' || value === null || isNaN(value)) return 'Quantity is required and must be a number.';
+      const n = Number(value);
+      if (!(n > 0)) return 'Quantity must be greater than 0.0.';
+      return '';
+    }
+
+    function validatePct(value){
+      if (value === '' || value === null || isNaN(value)) return 'Percentage is required and must be a number.';
+      const n = Number(value);
+      if (n < 5.0 || n > 10.0) return 'Percentage must be between 5.0 and 10.0.';
+      return '';
+    }
+
+    function recalcAmount(){
+      const q = parseFloat(inputQty.value);
+      const p = parseFloat(inputPct.value);
+      if (!isFinite(q) || !isFinite(p)) {
+        inputAmt.value = '';
+        return;
+      }
+      const amt = q * p * 7.5;
+      // format to 2 decimals
+      inputAmt.value = Math.round(amt * 100) / 100;
+    }
+
+    // --- UI ---
+    function clearErrors(){
+      [errId, errDate, errQty, errPct].forEach(el => { el.style.display = 'none'; el.textContent = ''; });
+    }
+
+    function showErrors(errors){
+      clearErrors();
+      if (errors.id) { errId.style.display = 'block'; errId.textContent = errors.id; }
+      if (errors.date) { errDate.style.display = 'block'; errDate.textContent = errors.date; }
+      if (errors.qty) { errQty.style.display = 'block'; errQty.textContent = errors.qty; }
+      if (errors.pct) { errPct.style.display = 'block'; errPct.textContent = errors.pct; }
+    }
+
+    function attachHandlers(){
+      inputQty.addEventListener('input', () => { recalcAmount(); validateField('qty'); });
+      inputPct.addEventListener('input', () => { recalcAmount(); validateField('pct'); });
+      inputId.addEventListener('input', () => validateField('id'));
+      inputDate.addEventListener('change', () => validateField('date'));
+
+      document.getElementById('add-row').addEventListener('click', addRow);
+      document.getElementById('clear-form').addEventListener('click', () => {
+        if (!confirm('Clear form fields?')) return;
+        inputId.value = ''; inputDate.value = ''; inputQty.value = ''; inputPct.value = ''; inputAmt.value = '';
+        clearErrors();
+      });
+
+      document.getElementById('clear-all').addEventListener('click', () => {
+        if (!confirm('Delete all rows? This cannot be undone.')) return;
+        rows = [];
+        saveStorage();
+        renderTable();
+      });
+
+      document.getElementById('download-xlsx').addEventListener('click', () => {
+        downloadXLSX();
+      });
+    }
+
+    function validateField(field){
+      if (field === 'id') {
+        const msg = validateId(inputId.value);
+        if (msg){ errId.style.display='block'; errId.textContent = msg; return false; } else { errId.style.display='none'; return true; }
+      }
+      if (field === 'date') {
+        const msg = validateDate(inputDate.value);
+        if (msg){ errDate.style.display='block'; errDate.textContent = msg; return false; } else { errDate.style.display='none'; return true; }
+      }
+      if (field === 'qty') {
+        const msg = validateQty(inputQty.value);
+        if (msg){ errQty.style.display='block'; errQty.textContent = msg; return false; } else { errQty.style.display='none'; return true; }
+      }
+      if (field === 'pct') {
+        const msg = validatePct(inputPct.value);
+        if (msg){ errPct.style.display='block'; errPct.textContent = msg; return false; } else { errPct.style.display='none'; return true; }
+      }
+      return true;
+    }
+
+    function validateAll(){
+      const errors = {};
+      const idMsg = validateId(inputId.value);
+      const dateMsg = validateDate(inputDate.value);
+      const qtyMsg = validateQty(inputQty.value);
+      const pctMsg = validatePct(inputPct.value);
+
+      if (idMsg) errors.id = idMsg;
+      if (dateMsg) errors.date = dateMsg;
+      if (qtyMsg) errors.qty = qtyMsg;
+      if (pctMsg) errors.pct = pctMsg;
+
+      showErrors(errors);
+      return Object.keys(errors).length === 0;
+    }
+
+    // --- Rows / Table ---
+    function addRow(){
+      if (!validateAll()) return;
+      const newRow = {
+        id: Number(inputId.value),
+        date: inputDate.value,
+        quantity: Number(inputQty.value),
+        percentage: Number(inputPct.value),
+        amount: Number(inputAmt.value) || (Number(inputQty.value) * Number(inputPct.value) * 7.5)
+      };
+      rows.push(newRow);
+      saveStorage();
+      renderTable();
+      // clear form but keep date? we'll clear all
+      inputId.value=''; inputDate.value=''; inputQty.value=''; inputPct.value=''; inputAmt.value='';
+      clearErrors();
+    }
+
+    function renderTable(){
+      tableHead.innerHTML = '';
+      const headRow = document.createElement('tr');
+      ['ID','Date','Quantity','Percentage','Amount','Actions'].forEach(h => {
+        const th = document.createElement('th'); th.textContent = h; headRow.appendChild(th);
+      });
+      tableHead.appendChild(headRow);
+
+      tableBody.innerHTML = '';
+      rows.forEach((r, idx) => {
+        const tr = document.createElement('tr');
+
+        const tdId = document.createElement('td'); tdId.textContent = r.id; tr.appendChild(tdId);
+        const tdDate = document.createElement('td'); tdDate.textContent = r.date; tr.appendChild(tdDate);
+        const tdQty = document.createElement('td'); tdQty.textContent = formatNumber(r.quantity); tr.appendChild(tdQty);
+        const tdPct = document.createElement('td'); tdPct.textContent = formatNumber(r.percentage); tr.appendChild(tdPct);
+        const tdAmt = document.createElement('td'); tdAmt.textContent = formatNumber(r.amount); tr.appendChild(tdAmt);
+
+        const tdActions = document.createElement('td'); tdActions.className = 'actions';
+        const btnEdit = document.createElement('button'); btnEdit.textContent = 'Edit'; btnEdit.className='ghost small';
+        const btnDelete = document.createElement('button'); btnDelete.textContent = 'Delete'; btnDelete.className='ghost small';
+        const btnCopy = document.createElement('button'); btnCopy.textContent = 'Copy'; btnCopy.className='ghost small';
+
+        btnCopy.addEventListener('click', () => {
+          inputId.value = r.id;
+          inputDate.value = r.date;
+          inputQty.value = r.quantity;
+          inputPct.value = r.percentage;
+          recalcAmount();
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+
+        btnDelete.addEventListener('click', () => {
+          if (!confirm('Delete this row?')) return;
+          rows.splice(idx,1);
+          saveStorage();
+          renderTable();
+        });
+
+        btnEdit.addEventListener('click', () => {
+          // turn row into editable inputs inline
+          enterEditMode(tr, r, idx);
+        });
+
+        tdActions.appendChild(btnEdit);
+        tdActions.appendChild(btnDelete);
+        tdActions.appendChild(btnCopy);
+        tr.appendChild(tdActions);
+
+        tableBody.appendChild(tr);
+      });
+
+      rowsCount.textContent = `${rows.length} row${rows.length===1?'':'s'}`;
+    }
+
+    function enterEditMode(tr, rowObj, idx){
+      tr.innerHTML = '';
+      // ID
+      const tdId = document.createElement('td');
+      const inId = document.createElement('input'); inId.type='number'; inId.value = rowObj.id; inId.min=0; inId.max=21; inId.step=1;
+      tdId.appendChild(inId); tr.appendChild(tdId);
+      // Date
+      const tdDate = document.createElement('td');
+      const inDate = document.createElement('input'); inDate.type='date'; inDate.value = rowObj.date;
+      tdDate.appendChild(inDate); tr.appendChild(tdDate);
+      // Qty
+      const tdQty = document.createElement('td');
+      const inQty = document.createElement('input'); inQty.type='number'; inQty.step='any'; inQty.value = rowObj.quantity;
+      tdQty.appendChild(inQty); tr.appendChild(tdQty);
+      // Pct
+      const tdPct = document.createElement('td');
+      const inPct = document.createElement('input'); inPct.type='number'; inPct.step='any'; inPct.value = rowObj.percentage;
+      tdPct.appendChild(inPct); tr.appendChild(tdPct);
+      // Amt (calculated)
+      const tdAmt = document.createElement('td');
+      const inAmt = document.createElement('input'); inAmt.type='text'; inAmt.readOnly = true;
+      inAmt.value = formatNumber(rowObj.amount);
+      tdAmt.appendChild(inAmt); tr.appendChild(tdAmt);
+
+      // actions: Save / Cancel
+      const tdAct = document.createElement('td');
+      const btnSave = document.createElement('button'); btnSave.textContent = 'Save'; btnSave.className='small';
+      const btnCancel = document.createElement('button'); btnCancel.textContent = 'Cancel'; btnCancel.className='ghost small';
+
+      // realtime amt recalc
+      function recalcInline(){
+        const q = parseFloat(inQty.value);
+        const p = parseFloat(inPct.value);
+        if (!isFinite(q) || !isFinite(p)) { inAmt.value = ''; return; }
+        inAmt.value = Math.round((q * p * 7.5) * 100) / 100;
+      }
+      inQty.addEventListener('input', recalcInline);
+      inPct.addEventListener('input', recalcInline);
+
+      btnCancel.addEventListener('click', () => { renderTable(); });
+
+      btnSave.addEventListener('click', () => {
+        // validate inline values
+        const tmpErrors = {};
+        const idMsg = validateId(inId.value);
+        const dateMsg = validateDate(inDate.value);
+        const qtyMsg = validateQty(inQty.value);
+        const pctMsg = validatePct(inPct.value);
+        if (idMsg) tmpErrors.id = idMsg;
+        if (dateMsg) tmpErrors.date = dateMsg;
+        if (qtyMsg) tmpErrors.qty = qtyMsg;
+        if (pctMsg) tmpErrors.pct = pctMsg;
+
+        if (Object.keys(tmpErrors).length) {
+          // show a quick alert with combined messages (inline messages would need more DOM)
+          alert('Validation errors:\\n' + Object.values(tmpErrors).join('\\n'));
+          return;
+        }
+        // save
+        rows[idx] = {
+          id: Number(inId.value),
+          date: inDate.value,
+          quantity: Number(inQty.value),
+          percentage: Number(inPct.value),
+          amount: Number(inAmt.value) || (Number(inQty.value) * Number(inPct.value) * 7.5)
+        };
+        saveStorage();
+        renderTable();
+      });
+
+      tdAct.appendChild(btnSave);
+      tdAct.appendChild(btnCancel);
+      tr.appendChild(tdAct);
+    }
+
+    // --- Utilities ---
+    function formatNumber(n){
+      if (!isFinite(n)) return '';
+      return (Math.round(n * 100) / 100).toFixed(2);
+    }
+
+    // --- Export ---
+    function downloadXLSX(){
+      // Build AOA with headers
+      const aoa = [];
+      aoa.push(['ID','Date','Quantity','Percentage','Amount']);
+      rows.forEach(r => {
+        aoa.push([r.id, r.date, r.quantity, r.percentage, r.amount]);
+      });
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      ws['!cols'] = [{wch:6},{wch:12},{wch:12},{wch:12},{wch:14}];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+      XLSX.writeFile(wb, 'table-data.xlsx');
+    }
+
+    // --- start ---
+    init();
+
+  </script>
+</body>
+</html>
+
